@@ -1,0 +1,1 @@
+package io.getquill.naming
