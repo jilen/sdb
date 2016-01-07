@@ -10,5 +10,6 @@ libraryDependencies ++= Seq(
   "io.getquill"                %% "quill-async"          % "0.2.1",
   "com.typesafe.slick"         %% "slick"                % "3.1.1",
   "com.storm-enroute"          %% "scalameter"           % "0.7",
+  "com.typesafe.slick"         %% "slick-hikaricp"       % "3.1.1",
   "mysql"                      %  "mysql-connector-java" % "5.1.30"
 )

@@ -1,7 +1,7 @@
 package io.github.scalax
 package bench
 
-import com.typesafe.config.ConfigFactory
+import com.zaxxer.hikari._
 import io.github.scalax.model._
 import io.github.scalax.dal._
 import org.scalameter.api._
@@ -20,23 +20,25 @@ object SimpleBench extends Bench.OfflineRegressionReport {
 
   val idGen = new java.util.concurrent.atomic.AtomicLong(0L)
 
-  val tps = Gen.enumeration("tps")(1, 4, 8, 16)
+  val tps = Gen.enumeration("tps")(10, 20)
   object quillDB extends MysqlAsyncSource[SnakeCase] {
-    println(ConfigFactory.load(getClass.getClassLoader))
-
-    def configPrefix =
-        getClass.getSimpleName.replaceAllLiterally("$", "")
   }
   val quillLayer = new QuillDataAccessLayer(quillDB)(ExecutionContext.global)
   object slickLayer extends SlickDataAccessLayer with slick.driver.MySQLDriver {
     import profile.api._
-    val DB = Database.forURL("jdbc:mysql://localhost/sdb", user="root")
+    val config = new HikariConfig();
+    config.setJdbcUrl("jdbc:mysql://localhost:3306/sdb")
+    config.setUsername("root")
+    config.setPassword("")
+    config.addDataSourceProperty("cachePrepStmts", "true")
+    config.addDataSourceProperty("prepStmtCacheSize", "250")
+    config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048")
+    val ds = new HikariDataSource(config);
+    val DB = Database.forDataSource(ds)
   }
 
   performance of "Data access library" in {
     measure method "trans" config (
-      exec.benchRuns -> 36,
-      exec.independentSamples -> 9,
       reports.regression.significance -> 1e-13
     ) in {
       using(tps) curve("quill") in { t =>
@@ -50,6 +52,7 @@ object SimpleBench extends Bench.OfflineRegressionReport {
   }
 
   private def runWithLayer(layer: DataAccessLayer, concurrenyLevel: Int) = {
+
     val now = new java.util.Date()
     val userId = 1L
 
