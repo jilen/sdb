@@ -3,7 +3,7 @@ package model
 
 import java.util.Date
 
-case class Order1(
+case class Order(
   userId: Long,
   totalFee: Long,
   gmtCreate: Date,

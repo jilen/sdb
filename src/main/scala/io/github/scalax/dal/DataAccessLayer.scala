@@ -16,10 +16,10 @@ trait DataAccessLayer {
   def insert(user: User): Future[_]
   def insertBatch(user: Seq[User]): Future[_]
   def queryById(id: Long): Future[Option[User]]
-  def trans(user: Long, order: Order1): Future[_]
+  def trans(user: Long, order: Order): Future[_]
 }
 
-class QuillDataAccessLayer(db: MysqlAsyncSource[SnakeCase])(implicit val ec: ExecutionContext) extends DataAccessLayer {
+class QuillDataAccessLayer(db: MysqlAsyncSource[SnakeCase with MysqlQuote])(implicit val ec: ExecutionContext) extends DataAccessLayer {
 
   def insert(user: User) = {
     val action = quote(query[User].insert)
@@ -38,18 +38,20 @@ class QuillDataAccessLayer(db: MysqlAsyncSource[SnakeCase])(implicit val ec: Exe
     db.run(q)(id).map(_.headOption)
   }
 
-  def trans(userId: Long, order: Order1) = {
+  def trans(userId: Long, order: Order) = {
 
+    def insert = quote { (order: Order) =>
+      query[Order].insert(order)
+    }
 
-
-    def insert = quote { (order: Order1) =>
-      query[Order1].insert(order)
+    def mutate = quote { ( totalFee: Long, userId: Long) =>
+      query[User].filter(_.id == userId).update(e => e.remain -> (e.remain - totalFee))
     }
 
     db.transaction { implicit ec =>
       for {
         _ <- db.run(insert)(List(order))
-        _ <- db.execute(s"update user set remain = remain - ${order.totalFee} where id = $userId")
+        _ <- db.run(mutate)(List(order.totalFee -> userId))
       } yield {}
     }
   }
@@ -67,9 +69,9 @@ trait SlickDataAccessLayer extends DataAccessLayer { profile: JdbcProfile =>
 
   def queryById(id: Long) = DB.run(Users.filter(_.id === id).result.headOption)
 
-  def trans(userId: Long, order: Order1) = DB.run {
+  def trans(userId: Long, order: Order) = DB.run {
     val mutateIO = sqlu"update user set remain = remain - ${order.totalFee} where id = ${userId}"
-    val insertIO = Order1s += order
+    val insertIO = Orders += order
     mutateIO >> insertIO
   }
 
@@ -89,14 +91,14 @@ trait SlickDataAccessLayer extends DataAccessLayer { profile: JdbcProfile =>
     def * = (id.?, name, birth, remain, gmtCreate, gmtModified) <> (User.tupled, User.unapply)
   }
 
-  class Order1s(tag: Tag) extends Table[Order1](tag, "order1") {
+  class Orders(tag: Tag) extends Table[Order](tag, "order") {
     def userId = column[Long]("user_id")
     def totalFee = column[Long]("total_fee")
     def gmtCreate = column[Date]("gmt_create")
     def gmtModified = column[Date]("gmt_modified")
-    def * = (userId, totalFee, gmtCreate, gmtModified) <> (Order1.tupled, Order1.unapply)
+    def * = (userId, totalFee, gmtCreate, gmtModified) <> (Order.tupled, Order.unapply)
   }
 
   val Users = TableQuery[Users]
-  val Order1s = TableQuery[Order1s]
+  val Orders = TableQuery[Orders]
 }

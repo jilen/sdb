@@ -19,12 +19,13 @@ import io.getquill.naming._
 object SimpleBench extends Bench.OfflineRegressionReport {
 
   val idGen = new java.util.concurrent.atomic.AtomicLong(0L)
+  val concurreny = Gen.enumeration("concurreny level")(16, 32, 64)
+  object quilldb256 extends MysqlAsyncSource[SnakeCase with MysqlQuote]
+  object quilldb512 extends MysqlAsyncSource[SnakeCase with MysqlQuote]
+  val quillLayer256 = new QuillDataAccessLayer(quilldb256)(ExecutionContext.global)
+  val quillLayer512 = new QuillDataAccessLayer(quilldb512)(ExecutionContext.global)
 
-  val tps = Gen.enumeration("tps")(10, 20)
-  object quillDB extends MysqlAsyncSource[SnakeCase] {
-  }
-  val quillLayer = new QuillDataAccessLayer(quillDB)(ExecutionContext.global)
-  object slickLayer extends SlickDataAccessLayer with slick.driver.MySQLDriver {
+  case class SlickLayer(threadSize: Int, connections: Int) extends SlickDataAccessLayer with slick.driver.MySQLDriver {
     import profile.api._
     val config = new HikariConfig();
     config.setJdbcUrl("jdbc:mysql://localhost:3306/sdb")
@@ -33,20 +34,30 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     config.addDataSourceProperty("cachePrepStmts", "true")
     config.addDataSourceProperty("prepStmtCacheSize", "250")
     config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048")
-    val ds = new HikariDataSource(config);
-    val DB = Database.forDataSource(ds)
+    config.addDataSourceProperty("maximumPoolSize", connections)
+    val ds = new HikariDataSource(config)
+    val DB = Database.forDataSource(ds, executor = AsyncExecutor("slick-executor", threadSize, 1000))
   }
 
+  lazy val slick32 = SlickLayer(32, 32)
+  lazy val slick64 = SlickLayer(64, 64)
+
   performance of "Data access library" in {
-    measure method "trans" config (
-      reports.regression.significance -> 1e-13
-    ) in {
-      using(tps) curve("quill") in { t =>
-        runWithLayer(quillLayer, t)
+    measure method "trans" in {
+      using(concurreny) curve("quill-256") in { t =>
+        runWithLayer(quillLayer256, t)
       }
 
-      using(tps) curve("slick") in { t =>
-        runWithLayer(slickLayer, t)
+      using(concurreny) curve("quill-512") in { t =>
+        runWithLayer(quillLayer512, t)
+      }
+
+      using(concurreny) curve("slick-32-32") in { t =>
+        runWithLayer(slick32, t)
+      }
+
+      using(concurreny) curve("slick-64-64") in { t =>
+        runWithLayer(slick64, t)
       }
     }
   }
@@ -56,15 +67,16 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     val now = new java.util.Date()
     val userId = 1L
 
-    def order = Order1(
+    def order = Order(
       userId = userId,
       totalFee = 100,
       gmtCreate = now,
-      gmtModified = now
-    )
-    println(s"[Bench] Running with concurrenyLevel ${concurrenyLevel}")
+      gmtModified = now)
     val futs = (1 to concurrenyLevel).map(_ => layer.trans(userId, order))
-    Await.result(Future.sequence(futs), Duration.Inf)
-    println("[Bench] Finish concurrenyLevel ${concurrenyLevel}")
+    Await.ready(Future.sequence(futs), Duration.Inf)
+  }
+
+  def test() = {
+    Await.result(runWithLayer(quillLayer256, 1), Duration.Inf)
   }
 }
