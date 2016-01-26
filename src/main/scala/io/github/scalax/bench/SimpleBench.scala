@@ -60,6 +60,10 @@ object SimpleBench extends Bench.OfflineRegressionReport {
       using(concurreny) curve("slick-64-64") in { t =>
         runWithLayer(slick64, t)
       }
+
+      using(concurreny) curve("slick-128-128") in { t =>
+        runWithLayer(slick128, t)
+      }
     }
   }
 
