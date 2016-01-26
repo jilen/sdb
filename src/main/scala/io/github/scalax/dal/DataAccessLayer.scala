@@ -19,7 +19,7 @@ trait DataAccessLayer {
   def trans(user: Long, order: Order): Future[_]
 }
 
-class QuillDataAccessLayer(db: MysqlAsyncSource[SnakeCase with MysqlQuote])(implicit val ec: ExecutionContext) extends DataAccessLayer {
+class QuillDataAccessLayer(db: MysqlAsyncSource[SnakeCase with MysqlEscape])(implicit val ec: ExecutionContext) extends DataAccessLayer {
 
   def insert(user: User) = {
     val action = quote(query[User].insert)
@@ -44,14 +44,14 @@ class QuillDataAccessLayer(db: MysqlAsyncSource[SnakeCase with MysqlQuote])(impl
       query[Order].insert(order)
     }
 
-    def mutate = quote { ( totalFee: Long, userId: Long) =>
+    def mutate = quote { ( userId: Long, totalFee: Int) =>
       query[User].filter(_.id == userId).update(e => e.remain -> (e.remain - totalFee))
     }
 
     db.transaction { implicit ec =>
       for {
         _ <- db.run(insert)(List(order))
-        _ <- db.run(mutate)(List(order.totalFee -> userId))
+        _ <- db.run(mutate)(List(order.userId -> order.totalFee.toInt))
       } yield {}
     }
   }
@@ -72,7 +72,7 @@ trait SlickDataAccessLayer extends DataAccessLayer { profile: JdbcProfile =>
   def trans(userId: Long, order: Order) = DB.run {
     val mutateIO = sqlu"update user set remain = remain - ${order.totalFee} where id = ${userId}"
     val insertIO = Orders += order
-    mutateIO >> insertIO
+    insertIO >> mutateIO
   }
 
   implicit lazy val dateColumnMap  =

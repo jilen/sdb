@@ -20,8 +20,8 @@ object SimpleBench extends Bench.OfflineRegressionReport {
 
   val idGen = new java.util.concurrent.atomic.AtomicLong(0L)
   val concurreny = Gen.enumeration("concurreny level")(16, 32, 64)
-  object quilldb256 extends MysqlAsyncSource[SnakeCase with MysqlQuote]
-  object quilldb512 extends MysqlAsyncSource[SnakeCase with MysqlQuote]
+  object quilldb256 extends MysqlAsyncSource[SnakeCase with MysqlEscape]
+  object quilldb512 extends MysqlAsyncSource[SnakeCase with MysqlEscape]
   val quillLayer256 = new QuillDataAccessLayer(quilldb256)(ExecutionContext.global)
   val quillLayer512 = new QuillDataAccessLayer(quilldb512)(ExecutionContext.global)
 
@@ -41,6 +41,7 @@ object SimpleBench extends Bench.OfflineRegressionReport {
 
   lazy val slick32 = SlickLayer(32, 32)
   lazy val slick64 = SlickLayer(64, 64)
+  lazy val slick128 = SlickLayer(128, 128)
 
   performance of "Data access library" in {
     measure method "trans" in {
