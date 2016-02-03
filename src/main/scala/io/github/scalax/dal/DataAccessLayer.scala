@@ -72,7 +72,7 @@ trait SlickDataAccessLayer extends DataAccessLayer { profile: JdbcProfile =>
   def trans(userId: Long, order: Order) = DB.run {
     val mutateIO = sqlu"update user set remain = remain - ${order.totalFee} where id = ${userId}"
     val insertIO = Orders += order
-    insertIO >> mutateIO
+    (insertIO >> mutateIO).transactionally
   }
 
   implicit lazy val dateColumnMap  =
