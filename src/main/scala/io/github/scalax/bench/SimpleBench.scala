@@ -18,7 +18,7 @@ import io.getquill.naming._
 
 object SimpleBench extends Bench.OfflineRegressionReport {
 
- val concurreny = Gen.enumeration("concurreny level")(4, 8, 16, 32, 64)
+ val concurreny = Gen.enumeration("concurreny level")(4, 8, 12, 16, 24, 32, 36, 40, 44, 48, 52, 56, 60, 64)
 
   performance of "data access library" in  {
     measure method "transaction" in {
@@ -36,13 +36,13 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     }
     measure method "select by id" in {
       using(concurreny) curve("quill256") beforeTests {
-        prepareSelect()
+        prepareSelect(quill256)
       } in { c =>
         runSelect(quill256, c)
       }
 
       using(concurreny) curve("slick64") beforeTests {
-        prepareSelect()
+        prepareSelect(slick64)
       } in { c =>
         runSelect(slick64, c)
       }
@@ -63,7 +63,15 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     Await.result(Future.sequence(futs), Duration.Inf)
   }
 
-  def prepareSelect() = {
+  def prepareSelect(dao: Dao) = {
+    (1 to (selectSize / 100)).map { i =>
+      println(s"Prepare selecting data of batch $i")
+      val users = ( (i * 100) to ((i + 1) * 100)).map(id => user.copy(id = Some(id)))
+      for {
+        _ <- dao.prepare()
+        _ <- dao.insertBatch(users)
+      } yield {}
+    }
   }
 
   def runSelect(dao: Dao, concurrent: Int) = {
@@ -73,6 +81,8 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     }
     Await.result(Future.sequence(futs), Duration.Inf)
   }
+
+  val selectSize = 10000
 
   val user = User(
     id = Some(1L),
