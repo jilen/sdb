@@ -1,7 +1,7 @@
 package io.github.scalax
 package bench
 
-import com.zaxxer.hikari._
+import java.util.Date
 import io.github.scalax.model._
 import io.github.scalax.dal._
 import org.scalameter.api._
@@ -10,78 +10,91 @@ import org.scalameter.picklers.Implicits._
 import scala.concurrent._
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
-import io.getquill.source._
-import io.getquill.source.async.mysql._
+import io.getquill.sources._
+import io.getquill.sources._
 import io.getquill.naming._
 
 
 
 object SimpleBench extends Bench.OfflineRegressionReport {
 
-  val idGen = new java.util.concurrent.atomic.AtomicLong(0L)
-  val concurreny = Gen.enumeration("concurreny level")(16, 32, 64)
-  object quilldb256 extends MysqlAsyncSource[SnakeCase with MysqlEscape]
-  object quilldb512 extends MysqlAsyncSource[SnakeCase with MysqlEscape]
-  val quillLayer256 = new QuillDataAccessLayer(quilldb256)(ExecutionContext.global)
-  val quillLayer512 = new QuillDataAccessLayer(quilldb512)(ExecutionContext.global)
+ val concurreny = Gen.enumeration("concurreny level")(16, 32, 64)
 
-  case class SlickLayer(threadSize: Int, connections: Int) extends SlickDataAccessLayer with slick.driver.MySQLDriver {
-    import profile.api._
-    val config = new HikariConfig();
-    config.setJdbcUrl("jdbc:mysql://localhost:3306/sdb")
-    config.setUsername("root")
-    config.setPassword("")
-    config.addDataSourceProperty("cachePrepStmts", "true")
-    config.addDataSourceProperty("prepStmtCacheSize", "250")
-    config.addDataSourceProperty("prepStmtCacheSqlLimit", "2048")
-    config.addDataSourceProperty("maximumPoolSize", connections)
-    val ds = new HikariDataSource(config)
-    val DB = Database.forDataSource(ds, executor = AsyncExecutor("slick-executor", threadSize, 1000))
-  }
-
-  lazy val slick32 = SlickLayer(32, 32)
-  lazy val slick64 = SlickLayer(64, 64)
-  lazy val slick128 = SlickLayer(128, 128)
-
-  performance of "Data access library" in {
-    measure method "trans" in {
-      using(concurreny) curve("quill-256") in { t =>
-        runWithLayer(quillLayer256, t)
+  performance of "data access library" in  {
+    measure method "transaction" in {
+      using(concurreny) curve("quill256") beforeTests {
+        prepareTrans(quill256)
+      } in { c =>
+        runTrans(quill256, c)
       }
 
-      using(concurreny) curve("quill-512") in { t =>
-        runWithLayer(quillLayer512, t)
+      using(concurreny) curve("slick64") beforeTests {
+        prepareTrans(slick64)
+      } in { c =>
+        runTrans(slick64, c)
+      }
+    }
+    measure method "select by id" in {
+      using(concurreny) curve("quill256") beforeTests {
+        prepareSelect(quill256)
+      } in { c =>
+        runSelect(quill256, c)
       }
 
-      using(concurreny) curve("slick-32-32") in { t =>
-        runWithLayer(slick32, t)
-      }
-
-      using(concurreny) curve("slick-64-64") in { t =>
-        runWithLayer(slick64, t)
-      }
-
-      using(concurreny) curve("slick-128-128") in { t =>
-        runWithLayer(slick128, t)
+      using(concurreny) curve("slick64") beforeTests {
+        prepareSelect(slick64)
+      } in { c =>
+        runSelect(slick64, c)
       }
     }
   }
 
-  private def runWithLayer(layer: DataAccessLayer, concurrenyLevel: Int) = {
-
-    val now = new java.util.Date()
-    val userId = 1L
-
-    def order = Order(
-      userId = userId,
-      totalFee = 100,
-      gmtCreate = now,
-      gmtModified = now)
-    val futs = (1 to concurrenyLevel).map(_ => layer.trans(userId, order))
-    Await.ready(Future.sequence(futs), Duration.Inf)
+  def prepareTrans(dao: Dao) = {
+    val fut = for {
+      _ <- dao.prepare()
+      _ <- dao.newUser(user)
+      _ <- dao.newOrder(order)
+    } yield {}
+    Await.result(fut, Duration.Inf)
   }
 
-  def test() = {
-    Await.result(runWithLayer(quillLayer256, 1), Duration.Inf)
+  def runTrans(dao: Dao, concurrency: Int) = {
+    val futs = (1 to concurrency).map(_ => dao.trans(user.id.get, order))
+    Await.result(Future.sequence(futs), Duration.Inf)
   }
+
+  def prepareSelect(dao: Dao) = {
+    val users = (1L to 10000L).map(id => user.copy(id = Some(id)))
+    val fut = for {
+      _ <- dao.prepare()
+      _ <- dao.insertBatch(users)
+    } yield {}
+    Await.result(fut, Duration.Inf)
+  }
+
+  def runSelect(dao: Dao, concurrent: Int) = {
+    val futs = (1 to concurrent).map { _ =>
+      val id = scala.util.Random.nextLong % 10000L
+      dao.getById(id)
+    }
+    Await.result(Future.sequence(futs), Duration.Inf)
+  }
+
+  val user = User(
+    id = Some(1L),
+    name = "user_name",
+    birth = new Date,
+    remain = 999999L,
+    gmtCreate = new Date,
+    gmtModified = new Date)
+
+  def order = Order(
+    userId = user.id.get,
+    totalFee = 100,
+    gmtCreate = new Date,
+    gmtModified = new Date)
+
+  val quill256 = new QuillDao("quill256")
+  val slick64 = SlickDao(64, 64)
+
 }

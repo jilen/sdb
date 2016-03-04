@@ -9,7 +9,7 @@ javaOptions += "-Dfile.encoding=UTF-8"
 fork := false
 
 libraryDependencies ++= Seq(
-  "io.getquill"                %% "quill-async"          % "0.3.0",
+  "io.getquill"                %% "quill-async"          % "0.4.1",
   "com.typesafe.slick"         %% "slick"                % "3.1.1",
   "com.storm-enroute"          %% "scalameter"           % "0.7",
   "com.typesafe.slick"         %% "slick-hikaricp"       % "3.1.1",
