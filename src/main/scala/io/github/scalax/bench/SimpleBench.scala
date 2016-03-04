@@ -18,7 +18,7 @@ import io.getquill.naming._
 
 object SimpleBench extends Bench.OfflineRegressionReport {
 
- val concurreny = Gen.enumeration("concurreny level")(16, 32, 64)
+ val concurreny = Gen.enumeration("concurreny level")(4, 8, 16, 32, 64)
 
   performance of "data access library" in  {
     measure method "transaction" in {
@@ -36,13 +36,13 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     }
     measure method "select by id" in {
       using(concurreny) curve("quill256") beforeTests {
-        prepareSelect(quill256)
+        prepareSelect()
       } in { c =>
         runSelect(quill256, c)
       }
 
       using(concurreny) curve("slick64") beforeTests {
-        prepareSelect(slick64)
+        prepareSelect()
       } in { c =>
         runSelect(slick64, c)
       }
@@ -64,17 +64,11 @@ object SimpleBench extends Bench.OfflineRegressionReport {
   }
 
   def prepareSelect() = {
-    val users = (1L to 10000L).map(id => user.copy(id = Some(id)))
-    val fut = for {
-      _ <- slick64.prepare()
-      _ <- slick64.insertBatch(users)
-    } yield {}
-    Await.result(fut, Duration.Inf)
   }
 
   def runSelect(dao: Dao, concurrent: Int) = {
     val futs = (1 to concurrent).map { _ =>
-      val id = scala.util.Random.nextLong % 10000L
+      val id = scala.util.Random.nextLong % 100
       dao.getById(id)
     }
     Await.result(Future.sequence(futs), Duration.Inf)
