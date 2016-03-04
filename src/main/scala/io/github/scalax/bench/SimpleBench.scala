@@ -63,11 +63,11 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     Await.result(Future.sequence(futs), Duration.Inf)
   }
 
-  def prepareSelect(dao: Dao) = {
+  def prepareSelect() = {
     val users = (1L to 10000L).map(id => user.copy(id = Some(id)))
     val fut = for {
-      _ <- dao.prepare()
-      _ <- dao.insertBatch(users)
+      _ <- slick64.prepare()
+      _ <- slick64.insertBatch(users)
     } yield {}
     Await.result(fut, Duration.Inf)
   }
