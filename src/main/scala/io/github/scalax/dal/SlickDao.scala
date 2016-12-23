@@ -18,6 +18,7 @@ class SlickDao(db: Database) extends Dao {
   def insertBatch(users: Seq[User]) = db.run(Users ++= users)
   def getById(id: Long) = db.run(Users.filter(_.id === id).result.headOption)
   def getByIds(ids: Set[Long]) = db.run(Users.filter(_.id inSet ids).result)
+  def destory() = db.close
 
   def trans(userId: Long, order: Order) = db.run {
     val mutateIO = sqlu"update user set remain = remain - ${order.totalFee} where id = ${userId}"

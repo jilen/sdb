@@ -12,4 +12,5 @@ trait Dao {
   def getById(id: Long): Future[Option[User]]
   def getByIds(id: Set[Long]): Future[Seq[User]]
   def trans(user: Long, order: Order): Future[_]
+  def destory(): Unit
 }

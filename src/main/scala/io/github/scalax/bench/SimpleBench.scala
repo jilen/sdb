@@ -10,52 +10,37 @@ import org.scalameter.picklers.Implicits._
 import scala.concurrent._
 import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
-import io.getquill.sources._
-import io.getquill.sources._
-import io.getquill.naming._
-
 
 
 object SimpleBench extends Bench.OfflineRegressionReport {
 
- val concurreny = Gen.enumeration("concurreny level")(4, 8, 12, 16, 24, 32, 36, 40, 44, 48, 52, 56, 60, 64)
+  val concurreny = Gen.enumeration("concurreny level")(16, 64, 128, 256, 512)
+  val concurrenyRead = Gen.enumeration("concurreny read level")(1024, 2048, 4096, 8192)
+  val asyncio64 = new AsyncIOSourceDao("asyncio64")
+  val slick64 = SlickDao(64, 64)
+  val quill64 = new QuillDao("quill64")
 
-  performance of "data access library" in  {
-    measure method "transaction" in {
-      using(concurreny) curve("quill256") beforeTests {
-        prepareTrans(quill256)
-      } in { c =>
-        runTrans(quill256, c)
-      }
 
-      using(concurreny) curve("slick64") beforeTests {
-        prepareTrans(slick64)
-      } in { c =>
-        runTrans(slick64, c)
-      }
-    }
+  performance of "data access library" in {
     measure method "select by id" in {
-      using(concurreny) curve("quill256") beforeTests {
-        prepareSelect(quill256)
+      using(concurrenyRead) curve("asyncio64") beforeTests {
+        prepareData()
       } in { c =>
-        runSelect(quill256, c)
+        runSelect(asyncio64, c)
       }
 
-      using(concurreny) curve("slick64") beforeTests {
-        prepareSelect(slick64)
+      using(concurrenyRead) curve("slick64") beforeTests {
+        prepareData()
       } in { c =>
         runSelect(slick64, c)
       }
-    }
-  }
 
-  def prepareTrans(dao: Dao) = {
-    val fut = for {
-      _ <- dao.prepare()
-      _ <- dao.newUser(user)
-      _ <- dao.newOrder(order)
-    } yield {}
-    Await.result(fut, Duration.Inf)
+      using(concurrenyRead) curve("quill64") beforeTests {
+        prepareData()
+      } in { c =>
+        runSelect(quill64, c)
+      }
+    }
   }
 
   def runTrans(dao: Dao, concurrency: Int) = {
@@ -63,15 +48,7 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     Await.result(Future.sequence(futs), Duration.Inf)
   }
 
-  def prepareSelect(dao: Dao) = {
-    (1 to (selectSize / 100)).map { i =>
-      println(s"Prepare selecting data of batch $i")
-      val users = ( (i * 100) to ((i + 1) * 100)).map(id => user.copy(id = Some(id)))
-      for {
-        _ <- dao.prepare()
-        _ <- dao.insertBatch(users)
-      } yield {}
-    }
+  def prepareData() = {
   }
 
   def runSelect(dao: Dao, concurrent: Int) = {
@@ -98,7 +75,5 @@ object SimpleBench extends Bench.OfflineRegressionReport {
     gmtCreate = new Date,
     gmtModified = new Date)
 
-  val quill256 = new QuillDao("quill256")
-  val slick64 = SlickDao(64, 64)
 
 }
